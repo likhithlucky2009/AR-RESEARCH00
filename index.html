@@ -1394,17 +1394,17 @@ function _setSyncUI(state, msg){
 // Core JSONP call
 function _gsCall(params, callback, _attempt){
   _attempt = _attempt || 1;
-  var maxAttempts = 3;
+  var maxAttempts = 2;
   var cbName = "_gs_cb_" + Date.now() + "_" + Math.floor(Math.random()*9999);
   var timer = setTimeout(function(){
     window[cbName] = null;
     if(_attempt < maxAttempts){
       console.warn("GS timeout, retry " + _attempt + "/" + maxAttempts);
-      setTimeout(function(){ _gsCall(params, callback, _attempt+1); }, 2000);
+      setTimeout(function(){ _gsCall(params, callback, _attempt+1); }, 1500);
     } else {
       callback(null);
     }
-  }, 25000);
+  }, 15000);
   window[cbName] = function(data){
     clearTimeout(timer);
     window[cbName] = null;
@@ -1688,6 +1688,28 @@ function _gsPullAll(callback){
       // Merge with local patients
       var local = [];
       try{ var r=localStorage.getItem("patients"); if(r) local=JSON.parse(r)||[]; }catch(e){}
+
+      // Normalize server patients — ensure fields object exists
+      serverPatients = serverPatients.map(function(sp){
+        if(!sp.fields && sp.name){
+          // Flat record from server — build fields from top-level keys
+          sp.fields = {
+            name: sp.name||"", age: sp.age||"", gender: sp.gender||"",
+            op: sp.op||"", date: sp.date||"", phone: sp.phone||"",
+            address: sp.address||"", education: sp.education||"",
+            profession: sp.profession||"", visitType: sp.visit||""
+          };
+          // Also copy any TNSS/QOL/follow fields if present
+          var allIds = ["t1","t2","t3","t4","t5","tnssTotal","tnssSeverity",
+            "qolTotal","qolInterpretation","inv_hb","inv_wbc","inv_eos","inv_plt","inv_aec","inv_vitd",
+            "f1date","f1_tnssTotal","f1_tnssSeverity","f1_qolTotal","f1_aec","f1_vitd",
+            "f2date","f2_tnssTotal","f2_tnssSeverity","f2_qolTotal","f2_aec","f2_vitd",
+            "f3date","f3_tnssTotal","f3_tnssSeverity","f3_qolTotal","f3_aec","f3_vitd"];
+          allIds.forEach(function(k){ if(sp[k] !== undefined) sp.fields[k] = sp[k]; });
+        }
+        return sp;
+      });
+
       var merged = serverPatients.slice();
       local.forEach(function(lp){
         if(!merged.find(function(sp){ return sp.op===lp.op; })) merged.push(lp);
@@ -1696,7 +1718,8 @@ function _gsPullAll(callback){
       _setSyncUI("ok", "✓ " + merged.length + " patients");
       if(callback) callback(merged);
     } else {
-      _setSyncUI("error");
+      // Don't show error on background pull — only show if explicitly triggered
+      _setSyncUI("idle");
       if(callback) callback(null);
     }
   });
